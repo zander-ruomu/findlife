@@ -92,3 +92,49 @@ TCP封包过程，仅仅涉及TCP/IP五层网络架构（应传网数物）：
 5. A收到B的连接释放报文后，必须发出确认，ACK=1，ack=w+1，而自己的序列号是seq=u+1，此时，A就进入了TIME-WAIT（时间等待）状态。注意此时TCP连接还没有释放，必须经过2∗∗MSL（最长报文段寿命，未防止B未收到确认包，防止B不断发送FIN片段连接释放报文）的时间后，当A撤销相应的TCP后，才进入CLOSED状态。
 6. B只要收到了A发出的确认，立即进入CLOSED状态。同样，撤销TCP后，就结束了这次的TCP连接。可以看到，服务器结束TCP连接的时间要比客户端早一些。
    
+
+
+
+
+
+## 相关维护问题：
+
+**问题1：怎么解决大量Time_Wait**
+
+查看当前Time_Wait状态连接信息：
+
+```bash
+netstat -an | awk '/^tcp/ {print $0}' | grep -i Time_Wait #查看所有端口
+netstat -an | awk '/^tcp/ {++y[$NF]} END {for(w in y) print w, y[w]}'  # 查看tcp连接所有状态当前的总个数
+```
+
+方法一：调整内核参数![image-20191210175924771](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20191210175924771.png)
+
+配置说明：
+
+net.ipv4.tcp_syncookies = 1 表示开启SYN Cookies。当出现SYN等待队列溢出时，启用cookies来处理，可防范少量SYN攻击，默认为0，表示关闭；
+
+net.ipv4.tcp_tw_reuse = 1   表示开启重用。允许将TIME-WAIT sockets重新用于新的TCP连接，默认为0，表示关闭；
+
+net.ipv4.tcp_tw_recycle = 1 表示开启TCP连接中TIME-WAIT sockets的快速回收，默认为0，表示关闭；
+
+net.ipv4.tcp_fin_timeout=30修改系統默认的 TIMEOUT 时间。
+
+
+
+方法二：配置如下参数
+
+![image-20191210180055137](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20191210180055137.png)
+
+
+
+**问题2：怎么解决请求结束后依然存在大量ESTABLISHED没有被释放**
+
+1.一般都跟服务器的Timeout设置有联系,查看tomcat的配置文件 server.xml
+
+![image-20191210181651732](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20191210181651732.png)
+
+检查配置得出20000毫秒的时候acceptCount=”100” ，明显不合理，最大连接数太小。
+
+优化：connectionTimeout改为100。acceptCount改为5000。
+
